@@ -158,7 +158,7 @@ class YOLOSignalController:
         self.is_running: bool = True
         self.simulation_rate: float = 1.0
 
-        self.current_arm_idx: int = 0
+        self.current_arm: str = "S"
         self.phase_state: str = "green"  # green / yellow / all_red
         self.phase_elapsed: float = 0.0
         self.allocated_green: float = 24.0
@@ -169,6 +169,10 @@ class YOLOSignalController:
         self.yellow_duration: float = 3.0
         self.all_red_duration: float = 1.5
         self.max_cycle: float = 140.0
+
+        # Starvation tracking & demand memory
+        self.phases_since_arm_served: Dict[str, int] = {d: 0 for d in DIRECTIONS}
+        self.demand_scores: Dict[str, float] = {d: 0.0 for d in DIRECTIONS}
 
         self.emergency_override: bool = False
         self.emergency_target_arm: Optional[str] = None
@@ -182,7 +186,41 @@ class YOLOSignalController:
 
     @property
     def active_arm(self) -> str:
-        return self.ARM_ORDER[self.current_arm_idx]
+        return self.current_arm
+
+    def calculate_demand_score(self, arm: str, approaches: Dict[str, ApproachState], previous_arm: Optional[str] = None) -> float:
+        """
+        Calculates real AI demand score based on live video vehicle detections:
+        score = pce_queue * 3.0 + queue * 2.0 + wait_time * 1.5 + count * 0.5 + starvation_penalty
+        """
+        ap = approaches[arm]
+        queue = ap.smooth_queue
+        count = ap.smooth_count
+        wait_m = ap.wait_accum / max(1, count)
+        pce_q = queue * 1.15
+
+        # Base demand score
+        score = pce_q * 3.0 + queue * 2.0 + wait_m * 1.5 + count * 0.5
+
+        # Incident bottleneck multiplier
+        if self.incident.get("active") and self.incident.get("dir") == arm:
+            score *= 1.35
+
+        # Starvation protection: progressively escalate priority for unserved approaches
+        if queue > 0:
+            if wait_m > 15.0:
+                score += (wait_m - 15.0) * 1.5
+            unserved = self.phases_since_arm_served.get(arm, 0)
+            if unserved >= 2:
+                score += unserved * 18.0
+
+        # Avoid back-to-back same phase when other approaches have queued traffic
+        if arm == previous_arm:
+            other_has_queue = any(approaches[a].smooth_queue > 0 for a in DIRECTIONS if a != arm)
+            if other_has_queue:
+                score -= 30.0
+
+        return max(0.0, round(score, 2))
 
     def _compute_green_time(self, approaches: Dict[str, ApproachState]) -> float:
         """XGBoost ML-predicted green time for active arm using 4-camera features."""
@@ -232,8 +270,7 @@ class YOLOSignalController:
                 pred_green = xgb_model.predict_green_time(state)
                 clamped_green = round(min(self.max_green, max(self.min_green, pred_green)), 1)
                 
-                # Store latest evaluation details
-                scores = {d: round(queues[ARM_MAP[d]] * 1.5 + waits[ARM_MAP[d]] * 0.4, 1) for d in DIRECTIONS}
+                scores = {d: self.calculate_demand_score(d, approaches) for d in DIRECTIONS}
                 ranked = sorted(DIRECTIONS, key=lambda d: scores[d], reverse=True)
                 self.latest_xgb_eval = {
                     "predicted_green": pred_green,
@@ -256,6 +293,36 @@ class YOLOSignalController:
         g = self.min_green + q * 2.5
         return round(min(self.max_green, max(self.min_green, g)), 1)
 
+    def _advance(self, approaches: Dict[str, ApproachState]):
+        """Selects WHICH approach gets green next based on live video demand scores."""
+        prev_arm = self.active_arm
+
+        if self.emergency_override and self.emergency_target_arm:
+            next_arm = self.emergency_target_arm
+        elif self.mode == "FIXED":
+            idx = (self.ARM_ORDER.index(prev_arm) + 1) % len(self.ARM_ORDER)
+            next_arm = self.ARM_ORDER[idx]
+        else:
+            # ADAPTIVE_AI: dynamic demand scoring from real video detections
+            scores = {d: self.calculate_demand_score(d, approaches, previous_arm=prev_arm) for d in DIRECTIONS}
+            self.demand_scores = scores
+            next_arm = max(scores, key=scores.get)
+
+        # Update starvation tracking
+        for d in DIRECTIONS:
+            if d == next_arm:
+                self.phases_since_arm_served[d] = 0
+            else:
+                self.phases_since_arm_served[d] = self.phases_since_arm_served.get(d, 0) + 1
+
+        self.current_arm = next_arm
+        self.phase_state = "green"
+        self.phase_elapsed = 0.0
+        self.allocated_green = self._compute_green_time(approaches)
+        self.completed_cycles += 1
+        for ap in approaches.values():
+            ap.wait_accum = max(0.0, ap.wait_accum - 2.0)
+
     def update(self, dt: float, approaches: Dict[str, ApproachState]):
         if not self.is_running:
             return
@@ -272,8 +339,22 @@ class YOLOSignalController:
         self.phase_elapsed += eff_dt
 
         if self.phase_state == "green":
-            limit = self.allocated_green
-            if self.phase_elapsed >= limit:
+            # Actuated Adaptive Gap-Out (NEMA actuated signal logic):
+            # If minimum green is met, and active green direction has 0 queued vehicles left,
+            # and another direction has waiting queues, gap out immediately to transfer green!
+            if (
+                self.mode == "ADAPTIVE_AI"
+                and not self.emergency_override
+                and self.phase_elapsed >= self.min_green
+            ):
+                cur_q = approaches[self.active_arm].smooth_queue
+                other_waiting = any(approaches[a].smooth_queue > 0 for a in DIRECTIONS if a != self.active_arm)
+                if cur_q == 0 and other_waiting:
+                    print(f"[Actuated Gap-Out] {self.active_arm} queue empty, transferring green early.")
+                    self.phase_state = "yellow"
+                    self.phase_elapsed = 0.0
+
+            if self.phase_state == "green" and self.phase_elapsed >= self.allocated_green:
                 self.phase_state = "yellow"
                 self.phase_elapsed = 0.0
 
@@ -284,13 +365,7 @@ class YOLOSignalController:
 
         elif self.phase_state == "all_red":
             if self.phase_elapsed >= self.all_red_duration:
-                self.current_arm_idx = (self.current_arm_idx + 1) % len(self.ARM_ORDER)
-                self.phase_state = "green"
-                self.phase_elapsed = 0.0
-                self.allocated_green = self._compute_green_time(approaches)
-                self.completed_cycles += 1
-                for ap in approaches.values():
-                    ap.wait_accum = max(0.0, ap.wait_accum - 1.5)
+                self._advance(approaches)
 
     def get_remaining(self) -> float:
         if self.phase_state == "green":
@@ -344,12 +419,12 @@ class YOLO4WayVehicleEngine:
             max_d = 620.0 if d in ("N", "S") else 880.0
             is_green = (active_arm == d and phase_state == "green")
 
-            target_count = max(2, min(14, apprs[d].smooth_count))
+            target_count = max(0, min(24, apprs[d].smooth_count))
             arm_vehs = [v for v in self.vehicles if v.dir == d]
 
-            if len(arm_vehs) < target_count and (now - self._last_spawn[d]) > 0.5:
+            if len(arm_vehs) < target_count and (now - self._last_spawn[d]) > 0.4:
                 min_dist = min([v.dist for v in arm_vehs] + [80.0])
-                if min_dist > 35.0:
+                if min_dist > 28.0:
                     vid = f"v-{self._next_id}"
                     self._next_id += 1
                     dest = TURNS[d][int(self._next_id) % len(TURNS[d])]
