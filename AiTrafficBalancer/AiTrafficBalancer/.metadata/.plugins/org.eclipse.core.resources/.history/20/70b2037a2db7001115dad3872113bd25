@@ -1,0 +1,5 @@
+package com.kce.traffic.eureka.config;
+
+public class SecurityConfig {
+
+}

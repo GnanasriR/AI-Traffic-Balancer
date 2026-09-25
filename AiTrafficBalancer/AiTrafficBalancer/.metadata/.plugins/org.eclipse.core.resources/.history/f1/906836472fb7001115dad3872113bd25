@@ -1,0 +1,54 @@
+package com.kce.traffic.gateway.dto;
+
+import java.time.Instant;
+import java.util.List;
+
+public class GatewayStatusDto {
+    private String gatewayName;
+    private String status;
+    private List<String> activeRoutes;
+    private String timestamp;
+
+    public GatewayStatusDto() {
+        this.timestamp = Instant.now().toString();
+    }
+
+    public GatewayStatusDto(String gatewayName, String status, List<String> activeRoutes) {
+        this.gatewayName = gatewayName;
+        this.status = status;
+        this.activeRoutes = activeRoutes;
+        this.timestamp = Instant.now().toString();
+    }
+
+    public String getGatewayName() {
+        return gatewayName;
+    }
+
+    public void setGatewayName(String gatewayName) {
+        this.gatewayName = gatewayName;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public List<String> getActiveRoutes() {
+        return activeRoutes;
+    }
+
+    public void setActiveRoutes(List<String> activeRoutes) {
+        this.activeRoutes = activeRoutes;
+    }
+
+    public String getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(String timestamp) {
+        this.timestamp = timestamp;
+    }
+}

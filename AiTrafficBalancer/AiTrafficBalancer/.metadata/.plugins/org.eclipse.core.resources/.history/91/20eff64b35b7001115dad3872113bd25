@@ -1,0 +1,5 @@
+package com.kce.traffic.user.entity;
+
+public class User {
+
+}

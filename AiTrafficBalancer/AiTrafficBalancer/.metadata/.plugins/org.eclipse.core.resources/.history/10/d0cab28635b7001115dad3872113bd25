@@ -1,0 +1,5 @@
+package com.kce.traffic.user.repository;
+
+public class UserRepository {
+
+}

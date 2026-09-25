@@ -1,0 +1,13 @@
+package com.kce.traffic.service;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class JunctionServiceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(JunctionServiceApplication.class, args);
+	}
+
+}

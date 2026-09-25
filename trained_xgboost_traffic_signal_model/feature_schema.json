@@ -1,0 +1,41 @@
+{
+  "model_type": "XGBRegressor",
+  "purpose": "Adaptive traffic signal green-time prediction",
+  "output": "recommended_green_seconds",
+  "output_range_seconds": [
+    8,
+    45
+  ],
+  "features": [
+    "south_queue",
+    "north_queue",
+    "east_queue",
+    "west_queue",
+    "south_wait",
+    "north_wait",
+    "east_wait",
+    "west_wait",
+    "south_count",
+    "north_count",
+    "east_count",
+    "west_count",
+    "south_pce",
+    "north_pce",
+    "east_pce",
+    "west_pce",
+    "active_arm",
+    "phase_elapsed",
+    "emergency_present",
+    "incident_present",
+    "pedestrian_demand"
+  ],
+  "training_samples": 60000,
+  "train_test_split": "80/20",
+  "random_seed": 42,
+  "metrics": {
+    "MAE_seconds": 1.7107214487459192,
+    "RMSE_seconds": 2.465853326433956,
+    "R2": 0.9629490702249484
+  },
+  "important_note": "This is a trained surrogate/expert-policy model generated from synthetic traffic states because the uploaded ZIP did not contain a real labeled traffic dataset. It should be described as a prototype trained policy model, not as a model trained on real city traffic data."
+}

@@ -1,0 +1,160 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        # Route 1: Optimizer Service
+        - id: optimizer-service
+          uri: lb://OPTIMIZER-SERVICE
+          predicates:
+            - Path=/api/v1/optimizer/**,/ws/traffic/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: optimizerServiceCB
+                fallbackUri: forward:/fallback/optimizer-service
+
+        # Route 2: Preemption Service (Emergency Vehicles)
+        - id: preemption-service
+          uri: lb://PREEMPTION-SERVICE
+          predicates:
+            - Path=/api/v1/preemption/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: preemptionServiceCB
+                fallbackUri: forward:/fallback/preemption-service
+
+        # Route 3: Incident Service
+        - id: incident-service
+          uri: lb://INCIDENT-SERVICE
+          predicates:
+            - Path=/api/v1/incidents/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: incidentServiceCB
+                fallbackUri: forward:/fallback/incident-service
+
+        # Route 4: Telemetry Service
+        - id: telemetry-service
+          uri: lb://TELEMETRY-SERVICE
+          predicates:
+            - Path=/api/v1/telemetry/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: telemetryServiceCB
+                fallbackUri: forward:/fallback/telemetry-service
+
+        # Route 5: Analytics Service
+        - id: analytics-service
+          uri: lb://ANALYTICS-SERVICE
+          predicates:
+            - Path=/api/v1/analytics/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: analyticsServiceCB
+                fallbackUri: forward:/fallback/analytics-service
+
+eureka:
+  client:
+    username: ${EUREKA_USER:eureka}
+    password: ${EUREKA_PASSWORD:eureka123}
+    service-url:
+      defaultZone: http://${EUREKA_USER:eureka}:${EUREKA_PASSWORD:eureka123}@localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      optimizerServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      preemptionServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      incidentServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      telemetryServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      analyticsServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+  timelimiter:
+    instances:
+      optimizerServiceCB:
+        timeout-duration: 4s
+      preemptionServiceCB:
+        timeout-duration: 4s
+      incidentServiceCB:
+        timeout-duration: 4s
+      telemetryServiceCB:
+        timeout-duration: 4s
+      analyticsServiceCB:
+        timeout-duration: 4s
+
+gateway:
+  internal-secret: ${GATEWAY_INTERNAL_SECRET:TrafficInternalSecretKey2026SecureGatewayToken}
+
+jwt:
+  # Base64 encoded 256-bit secret key
+  secret: ${JWT_SECRET:dHJhZmZpYy1zZWNyZXQta2V5LTMyei1ieXRlcy1taW5pbXVtLXNlY3VyZQ==}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    io.github.resilience4j: INFO
+    com.kce.traffic: DEBUG

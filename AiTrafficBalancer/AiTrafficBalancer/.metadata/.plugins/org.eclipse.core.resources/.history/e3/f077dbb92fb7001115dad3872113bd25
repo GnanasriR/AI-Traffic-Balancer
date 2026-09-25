@@ -1,0 +1,5 @@
+package com.kce.traffic.gateway.controller;
+
+public class FallbackController {
+
+}

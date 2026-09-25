@@ -1,0 +1,19 @@
+package com.signalsync.junction.dto;
+
+import com.signalsync.junction.model.ArmDirection;
+import com.signalsync.junction.model.PhaseState;
+
+import java.util.Map;
+
+public record JunctionStatusDto(
+    String id,
+    String name,
+    String mode,
+    int stage,
+    ArmDirection activeArm,
+    PhaseState phaseState,
+    double remainingSeconds,
+    double allocatedGreenSeconds,
+    Map<String, Integer> queues,
+    Map<String, Double> maxWaitTimes
+) {}

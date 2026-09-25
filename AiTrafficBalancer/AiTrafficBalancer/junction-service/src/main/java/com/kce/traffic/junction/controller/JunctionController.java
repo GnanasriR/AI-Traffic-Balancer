@@ -1,0 +1,46 @@
+package com.kce.traffic.junction.controller;
+
+import com.kce.traffic.junction.dto.JunctionStatusDto;
+import com.kce.traffic.junction.dto.ModeToggleDto;
+import com.kce.traffic.junction.service.JunctionService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/junctions")
+public class JunctionController {
+
+    private final JunctionService junctionService;
+
+    public JunctionController(JunctionService junctionService) {
+        this.junctionService = junctionService;
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<JunctionStatusDto> getJunctionStatus(@PathVariable String id) {
+        return ResponseEntity.ok(junctionService.getJunctionStatus(id));
+    }
+
+    @PostMapping("/{id}/mode")
+    public ResponseEntity<JunctionStatusDto> toggleMode(
+            @PathVariable String id,
+            @RequestBody ModeToggleDto dto) {
+        return ResponseEntity.ok(junctionService.toggleControlMode(id, dto.adaptive()));
+    }
+
+    @PostMapping("/{id}/step")
+    public ResponseEntity<JunctionStatusDto> advanceStep(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "1.0") double dt) {
+        return ResponseEntity.ok(junctionService.advanceStep(id, dt));
+    }
+
+    @PostMapping("/{id}/demand")
+    public ResponseEntity<JunctionStatusDto> updateDemand(
+            @PathVariable String id,
+            @RequestParam String arm,
+            @RequestParam int queue,
+            @RequestParam(defaultValue = "0.0") double maxWait) {
+        return ResponseEntity.ok(junctionService.updateDemand(id, arm, queue, maxWait));
+    }
+}

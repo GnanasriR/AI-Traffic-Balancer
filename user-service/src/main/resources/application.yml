@@ -1,0 +1,50 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:userdb;DB_CLOSE_DELAY=-1;MODE=Oracle}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${USER_DB_PASSWORD:}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
+
+  jpa:
+    database-platform: ${SPRING_JPA_DIALECT:org.hibernate.dialect.H2Dialect}
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+# Shared secret matching api-gateway.
+app:
+  jwt:
+    secret: ${JWT_SECRET:dHJhZmZpYy1zZWNyZXQta2V5LTMyei1ieXRlcy1taW5pbXVtLXNlY3VyZQ==}
+    expiration-ms: 86400000
+
+eureka:
+  client:
+    enabled: ${EUREKA_ENABLED:false}
+    username: ${EUREKA_USER:eureka}
+    password: ${EUREKA_PASSWORD:eureka123}
+    service-url:
+      defaultZone: http://${EUREKA_USER:eureka}:${EUREKA_PASSWORD:eureka123}@localhost:8761/eureka/
+    fetch-registry: ${EUREKA_FETCH:false}
+    register-with-eureka: ${EUREKA_REGISTER:false}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    root: INFO
+    com.kce.traffic: DEBUG

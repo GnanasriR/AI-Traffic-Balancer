@@ -1,0 +1,187 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:5173"
+              - "http://localhost:3000"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true
+      routes:
+        # Route 0: User Service (Authentication & RBAC)
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/v1/auth/**,/api/v1/admin/**
+
+        # Route 1: Optimizer Service (Core Simulation & Webster Logic)
+        - id: optimizer-service
+          uri: ${OPTIMIZER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/optimizer/**,/api/optimizer/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: optimizerServiceCB
+                fallbackUri: forward:/fallback/optimizer-service
+
+        # Route 2: Incident Service (Accidents, Obstacles & Lane Blockages)
+        - id: incident-service
+          uri: ${INCIDENT_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/api/incidents/**,/api/v1/incidents/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: incidentServiceCB
+                fallbackUri: forward:/fallback/incident-service
+
+        # Route 3: Analytics Service (Carbon Savings & Signal Performance)
+        - id: analytics-service
+          uri: ${ANALYTICS_SERVICE_URL:http://localhost:8085}
+          predicates:
+            - Path=/api/analytics/**,/api/v1/analytics/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: analyticsServiceCB
+                fallbackUri: forward:/fallback/analytics-service
+
+        # Route 4: Python Simulator WebSocket
+        - id: python-simulator-ws
+          uri: ${PYTHON_SIMULATOR_WS_URL:ws://localhost:8000}
+          predicates:
+            - Path=/ws/traffic/**
+
+        # Route 5: Python Simulator HTTP Controls & Snapshot
+        - id: python-simulator-http
+          uri: ${PYTHON_SIMULATOR_URL:http://localhost:8000}
+          predicates:
+            - Path=/api/snapshot,/api/control/**,/api/status
+
+        # Route 6: Preemption Service (Emergency Vehicles & Sirens)
+        - id: preemption-service
+          uri: ${PREEMPTION_SERVICE_URL:lb://PREEMPTION-SERVICE}
+          predicates:
+            - Path=/api/v1/preemption/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: preemptionServiceCB
+                fallbackUri: forward:/fallback/preemption-service
+
+        # Route 7: Telemetry Service (Queue Depths & Flow Rate Aggregation)
+        - id: telemetry-service
+          uri: ${TELEMETRY_SERVICE_URL:lb://TELEMETRY-SERVICE}
+          predicates:
+            - Path=/api/v1/telemetry/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: telemetryServiceCB
+                fallbackUri: forward:/fallback/telemetry-service
+
+eureka:
+  client:
+    enabled: ${EUREKA_ENABLED:false}
+    username: ${EUREKA_USER:eureka}
+    password: ${EUREKA_PASSWORD:eureka123}
+    service-url:
+      defaultZone: http://${EUREKA_USER:eureka}:${EUREKA_PASSWORD:eureka123}@localhost:8761/eureka/
+    fetch-registry: ${EUREKA_FETCH:false}
+    register-with-eureka: ${EUREKA_REGISTER:false}
+  instance:
+    prefer-ip-address: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      optimizerServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      preemptionServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      incidentServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      telemetryServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+      analyticsServiceCB:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        wait-duration-in-open-state: 10s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+  timelimiter:
+    instances:
+      optimizerServiceCB:
+        timeout-duration: 4s
+      preemptionServiceCB:
+        timeout-duration: 4s
+      incidentServiceCB:
+        timeout-duration: 4s
+      telemetryServiceCB:
+        timeout-duration: 4s
+      analyticsServiceCB:
+        timeout-duration: 4s
+
+gateway:
+  internal-secret: ${GATEWAY_INTERNAL_SECRET:TrafficInternalSecretKey2026SecureGatewayToken}
+
+jwt:
+  secret: ${JWT_SECRET:dHJhZmZpYy1zZWNyZXQta2V5LTMyei1ieXRlcy1taW5pbXVtLXNlY3VyZQ==}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    io.github.resilience4j: INFO
+    com.kce.traffic: DEBUG

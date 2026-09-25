@@ -1,0 +1,5 @@
+package com.signalsync.junction.dto;
+
+public record ModeToggleDto(
+    boolean adaptive
+) {}

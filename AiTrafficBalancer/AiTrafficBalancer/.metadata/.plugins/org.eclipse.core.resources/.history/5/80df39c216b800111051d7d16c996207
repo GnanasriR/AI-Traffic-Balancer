@@ -1,0 +1,117 @@
+package com.signalsync.junction.service;
+
+import com.signalsync.junction.dto.JunctionStatusDto;
+import com.signalsync.junction.model.ArmDirection;
+import com.signalsync.junction.model.Junction;
+import com.signalsync.junction.model.PhaseState;
+import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Service
+public class JunctionServiceImpl implements JunctionService {
+
+    private final Map<String, Junction> junctionStore = new ConcurrentHashMap<>();
+
+    public JunctionServiceImpl() {
+        Junction j1 = new Junction();
+        junctionStore.put(j1.getId(), j1);
+    }
+
+    @Override
+    public JunctionStatusDto getJunctionStatus(String junctionId) {
+        Junction junction = getOrThrow(junctionId);
+        return mapToDto(junction);
+    }
+
+    @Override
+    public JunctionStatusDto toggleControlMode(String junctionId, boolean adaptive) {
+        Junction junction = getOrThrow(junctionId);
+        junction.setMode(adaptive ? "ADAPTIVE_AI" : "FIXED");
+        return mapToDto(junction);
+    }
+
+    @Override
+    public JunctionStatusDto advanceStep(String junctionId, double dt) {
+        Junction junction = getOrThrow(junctionId);
+        double remaining = junction.getRemainingSeconds() - dt;
+
+        if (remaining <= 0) {
+            // Sequential 4-Stage Indian Split Phasing Transitions: GREEN -> YELLOW -> ALL_RED -> Next Stage GREEN
+            if (junction.getPhaseState() == PhaseState.GREEN) {
+                junction.setPhaseState(PhaseState.YELLOW);
+                junction.setRemainingSeconds(3.0);
+            } else if (junction.getPhaseState() == PhaseState.YELLOW) {
+                junction.setPhaseState(PhaseState.ALL_RED);
+                junction.setRemainingSeconds(1.5);
+            } else { // ALL_RED -> Move to Next Stage in sequence (S -> N -> E -> W)
+                int nextStage = (junction.getCurrentStageIndex() + 1) % 4;
+                junction.setCurrentStageIndex(nextStage);
+                junction.setPhaseState(PhaseState.GREEN);
+
+                // Compute Allocated Green Duration (Adaptive AI vs Fixed)
+                double greenDuration = computeGreenDuration(junction, junction.getActiveArm());
+                junction.setCurrentAllocatedGreen(greenDuration);
+                junction.setRemainingSeconds(greenDuration);
+            }
+        } else {
+            junction.setRemainingSeconds(remaining);
+        }
+
+        return mapToDto(junction);
+    }
+
+    @Override
+    public JunctionStatusDto updateDemand(String junctionId, String armCode, int queue, double maxWait) {
+        Junction junction = getOrThrow(junctionId);
+        for (ArmDirection dir : ArmDirection.values()) {
+            if (dir.getCode().equalsIgnoreCase(armCode) || dir.name().equalsIgnoreCase(armCode)) {
+                junction.getQueueCounts().put(dir, queue);
+                junction.getMaxWaitTimes().put(dir, maxWait);
+                break;
+            }
+        }
+        return mapToDto(junction);
+    }
+
+    private double computeGreenDuration(Junction junction, ArmDirection arm) {
+        if ("FIXED".equals(junction.getMode())) {
+            return 20.0;
+        }
+        // Webster Adaptive AI Calculation
+        int queue = junction.getQueueCounts().getOrDefault(arm, 0);
+        double wait = junction.getMaxWaitTimes().getOrDefault(arm, 0.0);
+        double dynamicGreen = 8.0 + (queue * 1.8) + (wait * 0.4);
+        return Math.max(8.0, Math.min(45.0, Math.round(dynamicGreen * 10.0) / 10.0));
+    }
+
+    private Junction getOrThrow(String junctionId) {
+        Junction junction = junctionStore.get(junctionId);
+        if (junction == null) {
+            throw new IllegalArgumentException("Junction not found with ID: " + junctionId);
+        }
+        return junction;
+    }
+
+    private JunctionStatusDto mapToDto(Junction j) {
+        Map<String, Integer> qMap = new HashMap<>();
+        Map<String, Double> wMap = new HashMap<>();
+        j.getQueueCounts().forEach((k, v) -> qMap.put(k.getCode(), v));
+        j.getMaxWaitTimes().forEach((k, v) -> wMap.put(k.getCode(), v));
+
+        return new JunctionStatusDto(
+            j.getId(),
+            j.getName(),
+            j.getMode(),
+            j.getCurrentStageIndex() + 1,
+            j.getActiveArm(),
+            j.getPhaseState(),
+            Math.round(j.getRemainingSeconds() * 10.0) / 10.0,
+            j.getCurrentAllocatedGreen(),
+            qMap,
+            wMap
+        );
+    }
+}

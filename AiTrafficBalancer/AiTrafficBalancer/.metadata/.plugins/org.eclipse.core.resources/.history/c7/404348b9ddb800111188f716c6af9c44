@@ -1,0 +1,152 @@
+package com.kce.traffic.optimizer.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.kce.traffic.optimizer.dto.PredictionResponseDto;
+import com.kce.traffic.optimizer.model.Approach;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+/**
+ * Replaces the old TrafficSimulationEngine.simulationTick(): this no longer runs any physics
+ * of its own, it just pulls the authoritative snapshot from the Python simulator and rebroadcasts
+ * it to whoever is connected to THIS service's /ws/traffic endpoint (e.g. clients that only know
+ * about optimizer-service via Eureka and don't talk to the Python service directly).
+ *
+ * It also continuously calculates traffic surge predictions and pushes them back into
+ * the Python simulator's /api/prediction/update endpoint so Python's XGBoost adaptive controller
+ * incorporates optimizer intelligence.
+ */
+@Service
+public class SnapshotRelayService {
+
+    private static final Logger log = LoggerFactory.getLogger(SnapshotRelayService.class);
+
+    private final PythonSimulatorClient pythonSimulatorClient;
+    private final TrafficWebSocketHandler webSocketHandler;
+    private final TrafficPredictionService trafficPredictionService;
+    private final AnalyticsServiceClient analyticsServiceClient;
+    private boolean lastEmergencyActive = false;
+
+    public SnapshotRelayService(PythonSimulatorClient pythonSimulatorClient,
+                                 TrafficWebSocketHandler webSocketHandler,
+                                 TrafficPredictionService trafficPredictionService,
+                                 AnalyticsServiceClient analyticsServiceClient) {
+        this.pythonSimulatorClient = pythonSimulatorClient;
+        this.webSocketHandler = webSocketHandler;
+        this.trafficPredictionService = trafficPredictionService;
+        this.analyticsServiceClient = analyticsServiceClient;
+    }
+
+    @Scheduled(fixedRateString = "${python.simulator.poll-interval-ms:200}")
+    public void relayTick() {
+        try {
+            JsonNode snapshot = pythonSimulatorClient.getSnapshot();
+            webSocketHandler.broadcastSnapshot(snapshot);
+        } catch (Exception e) {
+            log.warn("Could not reach Python simulator for snapshot poll: {}", e.getMessage());
+        }
+    }
+
+    @Scheduled(fixedRate = 2000)
+    public void pushPredictionsTick() {
+        try {
+            JsonNode snapshot = pythonSimulatorClient.getSnapshot();
+            if (snapshot == null) return;
+            JsonNode approaches = snapshot.path("approaches");
+
+            Map<Approach, Integer> queues = new EnumMap<>(Approach.class);
+            queues.put(Approach.SOUTH, approaches.path("S").path("queue").asInt(0));
+            queues.put(Approach.NORTH, approaches.path("N").path("queue").asInt(0));
+            queues.put(Approach.EAST, approaches.path("E").path("queue").asInt(0));
+            queues.put(Approach.WEST, approaches.path("W").path("queue").asInt(0));
+
+            Map<Approach, Boolean> incidents = new EnumMap<>(Approach.class);
+            JsonNode inc = snapshot.path("incident");
+            if (inc.path("active").asBoolean(false)) {
+                String d = inc.path("dir").asText("N");
+                if ("S".equals(d)) incidents.put(Approach.SOUTH, true);
+                else if ("N".equals(d)) incidents.put(Approach.NORTH, true);
+                else if ("E".equals(d)) incidents.put(Approach.EAST, true);
+                else if ("W".equals(d)) incidents.put(Approach.WEST, true);
+            }
+
+            List<PredictionResponseDto> predictions = trafficPredictionService.predictTrafficSurges(queues, incidents);
+
+            Map<String, Object> pythonPayload = new HashMap<>();
+            for (PredictionResponseDto p : predictions) {
+                pythonPayload.put(p.approach(), Map.of(
+                    "predicted_queue_15min", p.predictedQueue15Min(),
+                    "predicted_queue_30min", p.predictedQueue30Min(),
+                    "csi", p.congestionSeverityIndex(),
+                    "trend", p.trendDirection()
+                ));
+            }
+            pythonSimulatorClient.postPrediction(pythonPayload);
+            log.debug("Successfully synced AI traffic predictions from Java Optimizer to Python simulation");
+        } catch (Exception ignored) {
+            // Python simulator may not be online yet
+        }
+    }
+
+    @Scheduled(fixedRateString = "${analytics.service.sync-interval-ms:5000}")
+    public void syncAnalyticsTick() {
+        if (!analyticsServiceClient.isSyncEnabled()) return;
+        try {
+            JsonNode snapshot = pythonSimulatorClient.getSnapshot();
+            if (snapshot == null) return;
+
+            String junctionId = snapshot.path("junction").path("id").asText("J-101");
+            String controlMode = snapshot.path("control").path("mode").asText("ADAPTIVE_AI");
+            double baselineWait = snapshot.path("totals").path("baselineWait").asDouble(45.0);
+
+            String sessionId = analyticsServiceClient.ensureActiveSession(junctionId, controlMode, baselineWait);
+            if (sessionId == null) return;
+
+            JsonNode approaches = snapshot.path("approaches");
+            int totalCleared = snapshot.path("totals").path("cleared").asInt(0);
+
+            Map<String, String> dirMap = Map.of("N", "NORTH", "S", "SOUTH", "E", "EAST", "W", "WEST");
+            for (Map.Entry<String, String> entry : dirMap.entrySet()) {
+                String code = entry.getKey();
+                String fullName = entry.getValue();
+                JsonNode a = approaches.path(code);
+                if (a.isMissingNode()) continue;
+
+                int count = a.path("count").asInt(0);
+                int queue = a.path("queue").asInt(0);
+                double wait = a.path("wait").asDouble(0.0);
+                double maxWait = Math.max(wait * 1.4, wait);
+                double speed = a.path("speed").asDouble(35.0);
+                boolean incidentBlocked = snapshot.path("incident").path("active").asBoolean(false)
+                        && code.equalsIgnoreCase(snapshot.path("incident").path("dir").asText(""));
+
+                Map<String, Object> metricReq = Map.of(
+                        "direction", fullName,
+                        "vehicleCount", count,
+                        "queueLength", queue,
+                        "averageWaitTime", wait,
+                        "maximumWaitTime", maxWait,
+                        "averageSpeed", speed,
+                        "vehiclesCleared", Math.max(0, totalCleared / 4),
+                        "incidentBlocked", incidentBlocked
+                );
+                analyticsServiceClient.recordApproachMetric(sessionId, metricReq);
+            }
+
+            boolean emergencyActive = snapshot.path("emergency").path("active").asBoolean(false);
+            if (emergencyActive && !lastEmergencyActive) {
+                String targetArm = snapshot.path("emergency").path("targetArm").asText("NORTH");
+                double duration = snapshot.path("emergency").path("remaining").asDouble(30.0);
+                analyticsServiceClient.recordPreemption(sessionId, dirMap.getOrDefault(targetArm, targetArm), duration);
+            }
+            lastEmergencyActive = emergencyActive;
+
+        } catch (Exception ignored) {
+            // Analytics or Python service offline
+        }
+    }
+}

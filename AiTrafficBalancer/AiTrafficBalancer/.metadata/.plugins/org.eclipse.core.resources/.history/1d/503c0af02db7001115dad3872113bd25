@@ -1,0 +1,72 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        # 1. Telemetry & Sensor Ingestion Service
+        - id: telemetry-service
+          uri: lb://telemetry-service
+          predicates:
+            - Path=/api/v1/telemetry/**
+
+        # 2. Adaptive Traffic Optimizer Service (Situation 1 Phasing & Controls)
+        - id: optimizer-service
+          uri: lb://optimizer-service
+          predicates:
+            - Path=/api/v1/control/**, /api/v1/optimizer/**
+
+        # 3. Emergency Vehicle Preemption (EVP) Service
+        - id: preemption-service
+          uri: lb://preemption-service
+          predicates:
+            - Path=/api/v1/emergency/**, /api/v1/preemption/**
+
+        # 4. Incident & Anomaly Detection Service
+        - id: incident-service
+          uri: lb://incident-service
+          predicates:
+            - Path=/api/v1/incidents/**
+
+        # 5. Analytics & Evaluation Reporting Service
+        - id: analytics-service
+          uri: lb://analytics-service
+          predicates:
+            - Path=/api/v1/analytics/**
+
+        # 6. WebSocket Traffic Telemetry (5 Hz Live Feed)
+        - id: traffic-websocket
+          uri: lb:ws://optimizer-service
+          predicates:
+            - Path=/ws/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    gateway:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    com.signalsync.gateway: DEBUG

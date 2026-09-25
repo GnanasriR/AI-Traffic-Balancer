@@ -1,0 +1,91 @@
+package com.kce.traffic.optimizer.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kce.traffic.optimizer.dto.OptimizerDto.SnapshotDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.TextWebSocketHandler;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+@Component
+public class TrafficWebSocketHandler extends TextWebSocketHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(TrafficWebSocketHandler.class);
+    private final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final ConcurrentLinkedQueue<SnapshotDto> snapshotHistoryBuffer = new ConcurrentLinkedQueue<>();
+    private static final int MAX_BUFFER_SIZE = 50;
+
+    private volatile SnapshotDto latestSnapshot = null;
+
+    @Override
+    public void afterConnectionEstablished(WebSocketSession session) {
+        sessions.add(session);
+        log.info("New WebSocket client connected: {}", session.getId());
+
+        if (latestSnapshot != null && session.isOpen()) {
+            try {
+                Map<String, Object> wrapper = Map.of(
+                        "type", "METRICS_UPDATE",
+                        "timestamp", latestSnapshot.timestamp(),
+                        "data", latestSnapshot
+                );
+                String json = objectMapper.writeValueAsString(wrapper);
+                session.sendMessage(new TextMessage(json));
+                log.info("Pushed instant catch-up snapshot to reconnected session {}", session.getId());
+            } catch (IOException e) {
+                log.warn("Failed sending catch-up snapshot: {}", e.getMessage());
+            }
+        }
+    }
+
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        sessions.remove(session);
+        log.info("WebSocket client disconnected: {}", session.getId());
+    }
+
+    public void broadcastSnapshot(SnapshotDto snapshot) {
+        this.latestSnapshot = snapshot;
+        
+        snapshotHistoryBuffer.add(snapshot);
+        if (snapshotHistoryBuffer.size() > MAX_BUFFER_SIZE) {
+            snapshotHistoryBuffer.poll();
+        }
+
+        if (sessions.isEmpty()) {
+            return;
+        }
+
+        try {
+            Map<String, Object> wrapper = Map.of(
+                    "type", "METRICS_UPDATE",
+                    "timestamp", snapshot.timestamp(),
+                    "data", snapshot
+            );
+            String json = objectMapper.writeValueAsString(wrapper);
+            TextMessage message = new TextMessage(json);
+
+            for (WebSocketSession session : sessions) {
+                if (session.isOpen()) {
+                    try {
+                        session.sendMessage(message);
+                    } catch (IOException e) {
+                        log.warn("Failed to push telemetry to session {}: {}", session.getId(), e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed serializing telemetry snapshot: {}", e.getMessage());
+        }
+    }
+}

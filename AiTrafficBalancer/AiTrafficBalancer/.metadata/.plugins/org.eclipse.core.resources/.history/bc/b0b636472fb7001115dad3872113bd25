@@ -1,0 +1,53 @@
+package com.kce.traffic.gateway.dto;
+
+import java.time.Instant;
+
+public class FallbackResponseDto {
+    private String service;
+    private String message;
+    private int status;
+    private String timestamp;
+
+    public FallbackResponseDto() {
+        this.timestamp = Instant.now().toString();
+    }
+
+    public FallbackResponseDto(String service, String message, int status) {
+        this.service = service;
+        this.message = message;
+        this.status = status;
+        this.timestamp = Instant.now().toString();
+    }
+
+    public String getService() {
+        return service;
+    }
+
+    public void setService(String service) {
+        this.service = service;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public int getStatus() {
+        return status;
+    }
+
+    public void setStatus(int status) {
+        this.status = status;
+    }
+
+    public String getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(String timestamp) {
+        this.timestamp = timestamp;
+    }
+}

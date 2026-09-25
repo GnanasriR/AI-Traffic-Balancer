@@ -1,0 +1,5 @@
+package com.kce.traffic.user.security;
+
+public class JwtAuthFilter {
+
+}

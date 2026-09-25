@@ -1,0 +1,5 @@
+package com.kce.traffic.user.config;
+
+public class SecurityConfig {
+
+}

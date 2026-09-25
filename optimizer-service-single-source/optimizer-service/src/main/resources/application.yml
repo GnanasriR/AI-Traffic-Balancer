@@ -1,0 +1,46 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: optimizer-service
+
+eureka:
+  client:
+    enabled: ${EUREKA_ENABLED:false}
+    username: ${EUREKA_USER:eureka}
+    password: ${EUREKA_PASSWORD:eureka123}
+    service-url:
+      defaultZone: http://${EUREKA_USER:eureka}:${EUREKA_PASSWORD:eureka123}@localhost:8761/eureka/
+    fetch-registry: ${EUREKA_FETCH:false}
+    register-with-eureka: ${EUREKA_REGISTER:false}
+  instance:
+    prefer-ip-address: true
+
+python:
+  simulator:
+    # SignalSync Python AI Traffic Simulator (traffic_simulator/server.py) — single source of
+    # truth for physics, vehicle taxonomy and AI signal timing. This service no longer simulates
+    # anything itself; it reads and controls state here.
+    base-url: ${PYTHON_SIMULATOR_URL:http://localhost:8000}
+    poll-interval-ms: 200 # how often SnapshotRelayService pulls /api/snapshot to rebroadcast on our own /ws/traffic
+
+analytics:
+  service:
+    base-url: ${ANALYTICS_SERVICE_URL:http://localhost:8085}
+    sync-enabled: ${ANALYTICS_SYNC_ENABLED:true}
+    sync-interval-ms: ${ANALYTICS_SYNC_INTERVAL_MS:5000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.kce.traffic: DEBUG

@@ -1,0 +1,148 @@
+package com.kce.traffic.optimizer.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+
+import java.util.Map;
+
+/**
+ * HTTP client for communicating with the Analytics Service (port 8085).
+ * Enables the Optimizer and Python simulation to persist real-time approach telemetry,
+ * emergency vehicle preemptions, and completed session reports into the database.
+ */
+@Service
+public class AnalyticsServiceClient {
+
+    private static final Logger log = LoggerFactory.getLogger(AnalyticsServiceClient.class);
+
+    private final RestClient restClient;
+    private final boolean syncEnabled;
+    private String activeSessionId = null;
+
+    public AnalyticsServiceClient(
+            @Value("${analytics.service.base-url:http://localhost:8085}") String baseUrl,
+            @Value("${analytics.service.sync-enabled:true}") boolean syncEnabled) {
+        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+        this.syncEnabled = syncEnabled;
+    }
+
+    public boolean isSyncEnabled() {
+        return syncEnabled;
+    }
+
+    public String getActiveSessionId() {
+        return activeSessionId;
+    }
+
+    public void setActiveSessionId(String sessionId) {
+        this.activeSessionId = sessionId;
+    }
+
+    /**
+     * Initializes a new session on the Analytics Service if none is active.
+     */
+    public String ensureActiveSession(String junctionId, String controlMode, Double baselineAvgWait) {
+        if (activeSessionId != null) {
+            return activeSessionId;
+        }
+        if (!syncEnabled) {
+            return null;
+        }
+
+        try {
+            Map<String, Object> req = Map.of(
+                    "junctionId", junctionId != null ? junctionId : "J-101",
+                    "controlMode", controlMode != null ? controlMode : "ADAPTIVE_AI",
+                    "baselineAvgWaitSeconds", baselineAvgWait != null ? baselineAvgWait : 45.0
+            );
+
+            JsonNode resp = restClient.post()
+                    .uri("/api/analytics/sessions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(req)
+                    .retrieve()
+                    .body(JsonNode.class);
+
+            if (resp != null && resp.has("sessionId")) {
+                this.activeSessionId = resp.path("sessionId").asText();
+                log.info("[ANALYTICS] Initialized active analytics session in DB: {}", this.activeSessionId);
+            }
+        } catch (Exception e) {
+            log.debug("[ANALYTICS] Analytics service not reachable yet to create session: {}", e.getMessage());
+        }
+        return activeSessionId;
+    }
+
+    /**
+     * Records telemetry observation for a given approach.
+     */
+    public void recordApproachMetric(String sessionId, Map<String, Object> metric) {
+        if (!syncEnabled || sessionId == null) {
+            return;
+        }
+        try {
+            restClient.post()
+                    .uri("/api/analytics/sessions/{sessionId}/approaches", sessionId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(metric)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            log.debug("[ANALYTICS] Failed to record approach metric: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Records emergency vehicle preemption event in the analytics database.
+     */
+    public void recordPreemption(String sessionId, String direction, Double durationSeconds) {
+        if (!syncEnabled || sessionId == null) {
+            return;
+        }
+        try {
+            Map<String, Object> req = Map.of(
+                    "username", "optimizer-system",
+                    "userRole", "DISPATCHER",
+                    "junctionId", "J-101",
+                    "direction", direction != null ? direction : "NORTH",
+                    "durationSeconds", durationSeconds != null ? durationSeconds : 30.0
+            );
+
+            restClient.post()
+                    .uri("/api/analytics/sessions/{sessionId}/preemption", sessionId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(req)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[ANALYTICS] Recorded emergency preemption log for {} ({})", direction, sessionId);
+        } catch (Exception e) {
+            log.debug("[ANALYTICS] Failed to record preemption log: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Marks session complete and finalizes aggregate calculations.
+     */
+    public void completeSession(String sessionId) {
+        if (!syncEnabled || sessionId == null) {
+            return;
+        }
+        try {
+            restClient.post()
+                    .uri("/api/analytics/sessions/{sessionId}/complete", sessionId)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("[ANALYTICS] Completed and persisted session: {}", sessionId);
+            if (sessionId.equals(this.activeSessionId)) {
+                this.activeSessionId = null;
+            }
+        } catch (Exception e) {
+            log.debug("[ANALYTICS] Failed to complete session {}: {}", sessionId, e.getMessage());
+        }
+    }
+}

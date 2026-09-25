@@ -1,0 +1,8 @@
+package com.kce.traffic.gateway.service;
+
+import com.kce.traffic.gateway.dto.GatewayStatusDto;
+import reactor.core.publisher.Mono;
+
+public interface GatewayStatusService {
+    Mono<GatewayStatusDto> getGatewayStatus();
+}

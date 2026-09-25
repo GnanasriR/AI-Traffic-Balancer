@@ -1,0 +1,5 @@
+package com.kce.traffic.optimizer.model;
+
+public class SignalColor {
+
+}

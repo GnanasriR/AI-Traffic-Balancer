@@ -1,0 +1,5 @@
+package com.kce.traffic.gateway.service;
+
+public class GatewayStatusService {
+
+}
