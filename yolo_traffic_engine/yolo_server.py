@@ -420,6 +420,7 @@ def _yolo_4cam_inference_thread():
     }
 
     last_boxes_dict: Dict[str, List] = {d: [] for d in DIRECTIONS}
+    last_valid_frames: Dict[str, np.ndarray] = {}
     frame_count = 0
     t_last = time.time()
 
@@ -434,15 +435,33 @@ def _yolo_4cam_inference_thread():
             frame = None
             if cap and cap.isOpened():
                 ret, frame = cap.read()
-                if not ret:
+                if not ret or frame is None:
+                    # Video reached end of stream - seek to frame 0
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, frame = cap.read()
+                    if not ret or frame is None:
+                        # Re-open capture to guarantee seamless looping
+                        src_path = CAMERA_SOURCES.get(d)
+                        if src_path and os.path.exists(src_path):
+                            try:
+                                cap.release()
+                            except Exception:
+                                pass
+                            caps[d] = cv2.VideoCapture(src_path)
+                            cap = caps[d]
+                            ret, frame = cap.read()
+
+            if frame is not None:
+                last_valid_frames[d] = frame
+            elif d in last_valid_frames and last_valid_frames[d] is not None:
+                # Use cached frame to prevent any black flicker during video loop transition
+                frame = last_valid_frames[d]
 
             if frame is None:
-                # Black fallback tile
+                # Black fallback tile only if video source never opened
                 frame = np.zeros((360, 640, 3), dtype=np.uint8)
-                cv2.putText(frame, f"FEED OFFLINE: {d}", (180, 180),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 100, 100), 2)
+                cv2.putText(frame, f"FEED BUFFERING: {d}", (170, 180),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (120, 120, 120), 2)
 
             # Resize tile to uniform 640x360
             tile = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_LINEAR)
