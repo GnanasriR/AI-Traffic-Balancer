@@ -6,14 +6,10 @@ import type { PageId } from './components/Shell';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { JunctionPage } from './pages/JunctionPage';
-import { CorridorPage } from './pages/CorridorPage';
 import { PredictionsPage } from './pages/PredictionsPage';
 import { PlansPage } from './pages/PlansPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
-import { IncidentsPage } from './pages/IncidentsPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { ComparePage } from './pages/ComparePage';
 
 type AppRoute = 'landing' | 'login' | PageId;
 
@@ -84,13 +80,9 @@ export const App: React.FC = () => {
       onSignOut={handleSignOut}
     >
       {activePage === 'dashboard' && <DashboardPage onNavigate={(page) => setRoute(page)} />}
-      {activePage === 'junction' && <JunctionPage onNavigate={(page) => setRoute(page)} />}
-      {activePage === 'compare' && <ComparePage />}
-      {activePage === 'corridor' && <CorridorPage onNavigate={(page) => setRoute(page)} />}
       {activePage === 'predict' && <PredictionsPage />}
       {activePage === 'plans' && <PlansPage />}
       {activePage === 'analytics' && <AnalyticsPage />}
-      {activePage === 'incidents' && <IncidentsPage onNavigate={(page) => setRoute(page)} />}
       {activePage === 'settings' && (
         <SettingsPage user={user || DEFAULT_USER} onUpdateUser={handleUpdateUser} />
       )}

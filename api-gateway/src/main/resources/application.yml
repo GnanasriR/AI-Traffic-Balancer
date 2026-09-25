@@ -33,16 +33,6 @@ spring:
                 name: optimizerServiceCB
                 fallbackUri: forward:/fallback/optimizer-service
 
-        # Route 2: Incident Service (Accidents, Obstacles & Lane Blockages)
-        - id: incident-service
-          uri: ${INCIDENT_SERVICE_URL:http://localhost:8084}
-          predicates:
-            - Path=/api/incidents/**,/api/v1/incidents/**
-          filters:
-            - name: CircuitBreaker
-              args:
-                name: incidentServiceCB
-                fallbackUri: forward:/fallback/incident-service
 
         # Route 3: Analytics Service (Carbon Savings & Signal Performance)
         - id: analytics-service

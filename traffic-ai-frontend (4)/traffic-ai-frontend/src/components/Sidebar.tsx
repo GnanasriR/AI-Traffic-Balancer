@@ -3,7 +3,6 @@ import type { UserRole, User } from '../services/authStore';
 import {
   LayoutDashboard,
   Signal,
-  Network,
   BarChart2,
   Map,
   ShieldCheck,
@@ -13,7 +12,7 @@ import {
   Car
 } from 'lucide-react';
 
-type Page = 'dashboard' | 'signals' | 'network' | 'analytics' | 'roads' | 'admin' | 'settings';
+type Page = 'dashboard' | 'signals' | 'analytics' | 'roads' | 'admin' | 'settings';
 
 interface SidebarProps {
   currentPage: Page;
@@ -25,7 +24,6 @@ interface SidebarProps {
 const navItems: { id: Page; label: string; icon: any; adminOnly?: boolean }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'signals',   label: 'Signal Control', icon: Signal },
-  { id: 'network',   label: 'Junction Network', icon: Network },
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'roads',     label: 'Road Conditions', icon: Map },
   { id: 'admin',     label: 'Admin Management', icon: ShieldCheck, adminOnly: true },

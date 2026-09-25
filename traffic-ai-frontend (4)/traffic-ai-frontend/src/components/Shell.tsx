@@ -2,12 +2,9 @@ import React from 'react';
 import type { UserProfile } from '../types/signalsync';
 import {
   IcoGrid,
-  IcoSignal,
-  IcoNet,
   IcoWave,
   IcoSliders,
   IcoChart,
-  IcoAlert,
   IcoCog,
   IcoOut,
 } from './Icons';
@@ -15,13 +12,9 @@ import { SyncDebugPanel } from './SyncDebugPanel';
 
 export type PageId =
   | 'dashboard'
-  | 'junction'
-  | 'compare'
-  | 'corridor'
   | 'predict'
   | 'plans'
   | 'analytics'
-  | 'incidents'
   | 'settings';
 
 interface ShellProps {
@@ -41,13 +34,9 @@ export const Shell: React.FC<ShellProps> = ({
 }) => {
   const navItems: { id: PageId; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <IcoGrid /> },
-    { id: 'junction', label: 'Junction view', icon: <IcoSignal /> },
-    { id: 'compare', label: 'Compare A/B', icon: <IcoSliders /> },
-    { id: 'corridor', label: 'Corridor', icon: <IcoNet /> },
     { id: 'predict', label: 'Predictions', icon: <IcoWave /> },
     { id: 'plans', label: 'Signal plans', icon: <IcoSliders /> },
     { id: 'analytics', label: 'Analytics', icon: <IcoChart /> },
-    { id: 'incidents', label: 'Incidents', icon: <IcoAlert /> },
   ];
 
   return (

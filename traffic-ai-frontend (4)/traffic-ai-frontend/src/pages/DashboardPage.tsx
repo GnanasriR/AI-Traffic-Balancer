@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useSignalSync } from '../hooks/useSignalSync';
-import { NetworkMapSVG } from '../components/NetworkMapSVG';
 import { IcoAlert, IcoCheck } from '../components/Icons';
 import { DIRS, DIRNAME } from '../services/signalsyncEngine';
 import type { PageId } from '../components/Shell';
@@ -26,21 +25,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     ? (DIRS.reduce((sum, d) => sum + (s.approaches[d]?.speed ?? 40), 0) / 4).toFixed(0)
     : '46';
 
-  const loadColor = (val: number) =>
-    val > 0.66 ? 'var(--red, #C7413F)' : val > 0.33 ? 'var(--amber, #C8860D)' : 'var(--green-live, #1F9D62)';
-
   return (
     <>
-      {/* Top Corridor Banner */}
+      {/* Top Command Banner */}
       <div className="between" style={{ flexWrap: 'wrap', gap: '12px', marginBottom: '4px' }}>
         <div>
-          <h2 style={{ fontSize: '22px', fontWeight: 700 }}>Corridor Operations Command Center</h2>
-          <p className="muted">Coimbatore Smart Traffic Grid — 4 Coordinated Junctions · AI Green Wave Active</p>
-        </div>
-        <div className="row" style={{ gap: '8px' }}>
-          <button className="btn small" onClick={() => onNavigate('junction')}>
-            Open Live Junction Twin &rarr;
-          </button>
+          <h2 style={{ fontSize: '22px', fontWeight: 700 }}>AI Traffic Balancer Command Center</h2>
+          <p className="muted">Coimbatore Real-Time 4-Camera Vision Grid · XGBoost ML Adaptive Signal Balancer</p>
         </div>
       </div>
 
@@ -230,199 +221,95 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: '#10B981', fontWeight: 700 }}>AI RECOMMENDATION:</span>
             <span>
-              {s?.ai?.decision || `Prioritize ${DIRNAME[ph?.activeArm || 'S']} for optimal corridor throughput`}
+              {s?.ai?.decision || `Prioritize ${(DIRNAME as any)[ph?.activeArm || 'S']} for optimal intersection throughput`}
             </span>
           </div>
           <div className="muted">
-            Next Transition: <strong style={{ color: 'var(--fg)' }}>{DIRNAME[s?.ai?.next_arm || 'N']}</strong>
+            Next Transition: <strong style={{ color: 'var(--fg)' }}>{(DIRNAME as any)[s?.ai?.next_arm || 'N']}</strong>
           </div>
         </div>
       </div>
 
-      {/* 4-Junction Network Status Grid */}
-      <div>
-        <div className="between" style={{ marginBottom: '10px' }}>
-
-          <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Monitored Junctions on Corridor</h3>
-          <span className="muted" style={{ fontSize: '12.5px' }}>
-            4 junctions synchronized with dynamic offset
-          </span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-          {(s?.network || []).map((j, idx) => {
-            const rawLoad = j.load > 1.0 ? j.load / 100.0 : j.load;
-            const sat = Math.min(100, Math.max(5, Math.round(rawLoad * 100)));
-            const satCol = loadColor(rawLoad);
-            const cycleProgress = ((s?.ts ? Math.floor(s.ts / 1000) : 0) + j.offset) % 90;
-            const downstreamPhase =
-              cycleProgress < 25 ? 'North-South Green' :
-              cycleProgress < 30 ? 'Yellow Clearance' :
-              cycleProgress < 65 ? 'East-West Green' :
-              cycleProgress < 70 ? 'Yellow Clearance' : 'Green Wave Priority';
-            const phaseName = idx === 0 ? (ph?.shortLabel || 'Active Green') : downstreamPhase;
-
-            return (
-              <div
-                key={j.id}
-                className="card pad"
-                style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
-              >
-                <div>
-                  <div className="between">
-                    <div className="row" style={{ gap: '8px' }}>
-                      <span className="avatar" style={{ width: '28px', height: '28px', fontSize: '11px', background: satCol }}>
-                        {j.id}
-                      </span>
-                      <strong style={{ fontSize: '14.5px' }}>{j.name}</strong>
-                    </div>
-                    <span className="tag" style={{ fontSize: '11px' }}>
-                      {idx === 0 ? (
-                        <>
-                          <span className="dot pulse" /> LIVE TWIN
-                        </>
-                      ) : (
-                        'CORRIDOR NODE'
-                      )}
-                    </span>
-                  </div>
-                  <div className="between" style={{ marginTop: '14px' }}>
-                    <span className="muted">Saturation</span>
-                    <span className="num" style={{ fontSize: '16px', color: satCol }}>
-                      {sat}%
-                    </span>
-                  </div>
-                  <div className="meter" style={{ margin: '6px 0 12px' }}>
-                    <i style={{ width: `${sat}%`, background: satCol }} />
-                  </div>
-                  <div className="between" style={{ fontSize: '12.5px', padding: '4px 0', borderBottom: '1px solid var(--line-2)' }}>
-                    <span className="muted">Active Phase</span>
-                    <span className="tag g" style={{ fontSize: '11px' }}>
-                      {phaseName}
-                    </span>
-                  </div>
-                  <div className="between" style={{ fontSize: '12.5px', padding: '4px 0', borderBottom: '1px solid var(--line-2)' }}>
-                    <span className="muted">Green Wave Offset</span>
-                    <span className="num">+{j.offset}s</span>
-                  </div>
-                </div>
-                <div style={{ marginTop: '14px' }}>
-                  <button
-                    className="btn ghost small"
-                    style={{ width: '100%', justifyContent: 'center' }}
-                    onClick={() => onNavigate('junction')}
-                  >
-                    {idx === 0 ? 'Open Signal Controller →' : 'View Intersection Details'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Corridor Progression Map (SVG) & Live Routine Telemetry */}
-      <div className="two">
+      {/* Signal Routine & AI Optimization Telemetry */}
+      <div className="two" style={{ marginBottom: '20px' }}>
+        {/* Active Indian Routine */}
         <div className="card">
           <div className="panelhead">
-            <h3>Corridor Progression Map</h3>
-            <span className="tag g">
-              <span className="dot pulse" /> Platoons Flowing
-            </span>
+            <h3>Active Indian Signal Routine</h3>
           </div>
-          <div style={{ padding: '10px' }}>
-            <NetworkMapSVG network={s?.network} onSelectJunction={() => onNavigate('junction')} />
-          </div>
-          <div className="pad" style={{ paddingTop: 0 }}>
-            <p className="muted" style={{ fontSize: '12.5px' }}>
-              Green Wave Algorithm synchronizes phase transitions between J1 Gandhipuram and J3 Avinashi.
-              Vehicles leaving J1 encounter downstream green signals without coming to a stop.
-            </p>
+          <div className="pad">
+            <div className="phaseclock" style={{ marginBottom: '12px' }}>
+              <span className="num t">{Math.ceil(ph?.remaining ?? 0)}</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '15px' }}>
+                  {ph?.label ?? 'Stage 1: South Approach Green'}
+                </div>
+                <div className="muted" style={{ fontSize: '12px' }}>
+                  Zero-conflict protected 4-stage split routine
+                </div>
+              </div>
+            </div>
+            <div className="divider" />
+            <div className="between" style={{ padding: '4px 0' }}>
+              <span className="lbl">Stage 1: South Arm</span>
+              <span className="num">{ph?.plan.S ?? 22}s</span>
+            </div>
+            <div className="between" style={{ padding: '4px 0' }}>
+              <span className="lbl">Stage 2: North Arm</span>
+              <span className="num">{ph?.plan.N ?? 24}s</span>
+            </div>
+            <div className="between" style={{ padding: '4px 0' }}>
+              <span className="lbl">Stage 3: East Arm</span>
+              <span className="num">{ph?.plan.E ?? 18}s</span>
+            </div>
+            <div className="between" style={{ padding: '4px 0' }}>
+              <span className="lbl">Stage 4: West Arm</span>
+              <span className="num">{ph?.plan.W ?? 16}s</span>
+            </div>
+            <div className="divider" />
+            <div className="between">
+              <span className="muted">Total Cycle Length</span>
+              <span className="num">{ph?.plan.cycle ?? 98}s</span>
+            </div>
+            <div className="between" style={{ marginTop: '6px' }}>
+              <span className="muted">Cycles AI Optimized</span>
+              <span className="num">{t?.cycles ?? 0}</span>
+            </div>
           </div>
         </div>
 
-        <div className="grid" style={{ alignContent: 'start' }}>
-          {/* Active Indian Routine */}
-          <div className="card">
-            <div className="panelhead">
-              <h3>Active Indian Signal Routine</h3>
-            </div>
-            <div className="pad">
-              <div className="phaseclock" style={{ marginBottom: '12px' }}>
-                <span className="num t">{Math.ceil(ph?.remaining ?? 0)}</span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                    {ph?.label ?? 'Stage 1: South Approach Green'}
-                  </div>
-                  <div className="muted" style={{ fontSize: '12px' }}>
-                    Zero-conflict protected 4-stage split routine
-                  </div>
-                </div>
-              </div>
-              <div className="divider" />
-              <div className="between" style={{ padding: '4px 0' }}>
-                <span className="lbl">Stage 1: South Arm</span>
-                <span className="num">{ph?.plan.S ?? 22}s</span>
-              </div>
-              <div className="between" style={{ padding: '4px 0' }}>
-                <span className="lbl">Stage 2: North Arm</span>
-                <span className="num">{ph?.plan.N ?? 24}s</span>
-              </div>
-              <div className="between" style={{ padding: '4px 0' }}>
-                <span className="lbl">Stage 3: East Arm</span>
-                <span className="num">{ph?.plan.E ?? 18}s</span>
-              </div>
-              <div className="between" style={{ padding: '4px 0' }}>
-                <span className="lbl">Stage 4: West Arm</span>
-                <span className="num">{ph?.plan.W ?? 16}s</span>
-              </div>
-              <div className="divider" />
-              <div className="between">
-                <span className="muted">Total Cycle Length</span>
-                <span className="num">{ph?.plan.cycle ?? 98}s</span>
-              </div>
-              <div className="between" style={{ marginTop: '6px' }}>
-                <span className="muted">Cycles AI Optimized</span>
-                <span className="num">{t?.cycles ?? 0}</span>
-              </div>
-            </div>
+        {/* AI Optimization Event List */}
+        <div className="card">
+          <div className="panelhead">
+            <h3>Recent AI Optimization Events</h3>
           </div>
-
-          {/* AI Optimization Event List */}
-          <div className="card">
-            <div className="panelhead">
-              <h3>Recent AI Optimization Events</h3>
-              <button className="btn ghost small" onClick={() => onNavigate('incidents')}>
-                All logs
-              </button>
-            </div>
-            <div>
-              {(!s?.events || !s.events.length) ? (
-                <div className="pad muted">No decisions yet. The first plan lands at the end of this cycle.</div>
-              ) : (
-                s.events.slice(0, 5).map((e, idx) => (
-                  <div key={idx} className="incident" style={{ padding: '11px 16px' }}>
-                    <span
-                      className="ic"
-                      style={{
-                        width: '26px',
-                        height: '26px',
-                        background: e.kind === 'incident' ? 'var(--amber-soft)' : 'var(--green-soft)',
-                      }}
-                    >
-                      {e.kind === 'incident' ? <IcoAlert /> : <IcoCheck />}
-                    </span>
-                    <div style={{ flex: 1 }}>
-                      <div className="between">
-                        <span style={{ fontSize: '13.5px' }}>{e.text}</span>
-                        <span className="muted" style={{ fontSize: '12px' }}>
-                          {new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </span>
-                      </div>
+          <div>
+            {(!s?.events || !s.events.length) ? (
+              <div className="pad muted">No decisions yet. The first plan lands at the end of this cycle.</div>
+            ) : (
+              s.events.slice(0, 5).map((e, idx) => (
+                <div key={idx} className="incident" style={{ padding: '11px 16px' }}>
+                  <span
+                    className="ic"
+                    style={{
+                      width: '26px',
+                      height: '26px',
+                      background: e.kind === 'incident' ? 'var(--amber-soft)' : 'var(--green-soft)',
+                    }}
+                  >
+                    {e.kind === 'incident' ? <IcoAlert /> : <IcoCheck />}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div className="between">
+                      <span style={{ fontSize: '13.5px' }}>{e.text}</span>
+                      <span className="muted" style={{ fontSize: '12px' }}>
+                        {new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

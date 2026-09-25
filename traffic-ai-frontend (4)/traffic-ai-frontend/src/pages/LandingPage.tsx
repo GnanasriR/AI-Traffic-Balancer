@@ -1,7 +1,5 @@
 import React from 'react';
 import { useSignalSync } from '../hooks/useSignalSync';
-import { SimCanvas } from '../components/SimCanvas';
-import { NetworkMapSVG } from '../components/NetworkMapSVG';
 import { DIRS, DIRNAME } from '../services/signalsyncEngine';
 
 interface LandingPageProps {
@@ -85,7 +83,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToLogin }) =
                 </div>
               </div>
 
-              <SimCanvas height={460} />
+              <div style={{ position: 'relative', width: '100%', height: '460px', background: '#0a0a0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img
+                  src="http://localhost:8000/api/video/stream"
+                  alt="4-Camera Quad Surveillance"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              </div>
 
               <div className="stage-foot">
                 {DIRS.map((d) => (
@@ -195,20 +202,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToLogin }) =
         </div>
       </section>
 
-      {/* ── Corridor Section ───────────────────────────────────────── */}
-      <section className="section" id="network">
+      {/* ── Call to Action ────────────────────────────────────────── */}
+      <section className="section" id="cta" style={{ textAlign: 'center' }}>
         <div className="wrap">
-          <h2>One junction is a start. The corridor is the point.</h2>
+          <h2>Ready to experience real-time AI traffic balancing?</h2>
           <p className="lead">
-            Junctions publish their departures to their neighbours, so a platoon released at J1 reaches J3
-            on green instead of on a stop line.
+            Access the 4-camera real-time surveillance feed and intelligent XGBoost signal optimizer.
           </p>
-          <div className="card" style={{ marginTop: '24px', padding: '10px' }}>
-            <NetworkMapSVG onSelectJunction={() => onNavigateToLogin()} />
-          </div>
-          <div className="cta" style={{ marginTop: '30px' }}>
+          <div className="cta" style={{ marginTop: '24px' }}>
             <button className="btn" onClick={onNavigateToLogin}>
-              Sign in
+              Access Command Center
             </button>
           </div>
         </div>

@@ -170,6 +170,10 @@ export interface Snapshot {
     selected_arm?: string;
     recommended_green?: number;
     prediction_time_ms?: number;
+    decision?: string;
+    next_arm?: string;
+    ranking?: string[];
+    cameras?: Record<string, any>;
     demand_scores?: Record<string, number>;
   };
 }

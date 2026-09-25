@@ -178,7 +178,6 @@ class YOLOSignalController:
         self.emergency_target_arm: Optional[str] = None
         self.emergency_remaining: float = 0.0
 
-        self.incident: Dict[str, Any] = {"active": False}
         self.completed_cycles: int = 0
         self.total_cleared: int = 0
         self.predicted_queues: Dict = {}
@@ -201,10 +200,6 @@ class YOLOSignalController:
 
         # Base demand score
         score = pce_q * 3.0 + queue * 2.0 + wait_m * 1.5 + count * 0.5
-
-        # Incident bottleneck multiplier
-        if self.incident.get("active") and self.incident.get("dir") == arm:
-            score *= 1.35
 
         # Starvation protection: progressively escalate priority for unserved approaches
         if queue > 0:
@@ -264,7 +259,7 @@ class YOLOSignalController:
                     active_arm=active_py,
                     phase_elapsed=self.phase_elapsed,
                     emergency_present=self.emergency_override,
-                    incident_present=self.incident.get("active", False),
+                    incident_present=False,
                     pedestrian_demand=0,
                 )
                 pred_green = xgb_model.predict_green_time(state)
@@ -386,112 +381,6 @@ events: deque = deque(maxlen=50)
 
 _latest_frame_lock = threading.Lock()
 _latest_jpeg: Optional[bytes] = None
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  4-Approach 2D Vehicle Simulation Engine (Populates Canvas for React UI)
-# ═══════════════════════════════════════════════════════════════════════════════
-VEHICLE_COLOR_PALETTE = ["#2563EB", "#DC2626", "#16A34A", "#D97706", "#7C3AED", "#0891B2", "#475569"]
-
-class SimVehicle:
-    def __init__(self, vid: str, d: str, to: str, vtype: str, dist: float, col: str):
-        self.id = vid
-        self.dir = d
-        self.to = to
-        self.type = vtype
-        self.dist = dist
-        self.speed = 10.0
-        self.wait = 0.0
-        self.col = col
-
-class YOLO4WayVehicleEngine:
-    def __init__(self):
-        self.vehicles: List[SimVehicle] = []
-        self._next_id = 1
-        self._last_spawn = {d: 0.0 for d in DIRECTIONS}
-
-    def update(self, dt: float, apprs: Dict[str, ApproachState], active_arm: str, phase_state: str):
-        TURNS = {"N": ["S", "W", "E"], "S": ["N", "E", "W"], "E": ["W", "N", "S"], "W": ["E", "S", "N"]}
-        now = time.time()
-
-        for d in DIRECTIONS:
-            sd = 248.0 if d in ("N", "S") else 448.0
-            max_d = 620.0 if d in ("N", "S") else 880.0
-            is_green = (active_arm == d and phase_state == "green")
-
-            target_count = max(0, min(24, apprs[d].smooth_count))
-            arm_vehs = [v for v in self.vehicles if v.dir == d]
-
-            if len(arm_vehs) < target_count and (now - self._last_spawn[d]) > 0.4:
-                min_dist = min([v.dist for v in arm_vehs] + [80.0])
-                if min_dist > 28.0:
-                    vid = f"v-{self._next_id}"
-                    self._next_id += 1
-                    dest = TURNS[d][int(self._next_id) % len(TURNS[d])]
-                    col = VEHICLE_COLOR_PALETTE[self._next_id % len(VEHICLE_COLOR_PALETTE)]
-                    vtype = "bus" if self._next_id % 7 == 0 else ("two_wheeler" if self._next_id % 4 == 0 else "car")
-                    self.vehicles.append(SimVehicle(vid, d, dest, vtype, 0.0, col))
-                    self._last_spawn[d] = now
-
-        to_remove = set()
-        for d in DIRECTIONS:
-            sd = 248.0 if d in ("N", "S") else 448.0
-            max_d = 620.0 if d in ("N", "S") else 880.0
-            is_green = (active_arm == d and phase_state == "green")
-            arm_vehs = sorted([v for v in self.vehicles if v.dir == d], key=lambda v: v.dist, reverse=True)
-
-            for i, v in enumerate(arm_vehs):
-                if v.dist >= sd:
-                    v.speed = min(36.0, v.speed + 16.0 * dt)
-                    v.dist += v.speed * dt * 7.5
-                    if v.dist >= max_d:
-                        to_remove.add(v)
-                        signal_ctrl.total_cleared += 1
-                else:
-                    if is_green:
-                        v.speed = min(32.0, v.speed + 12.0 * dt)
-                        v.dist += v.speed * dt * 7.5
-                        v.wait = max(0.0, v.wait - dt)
-                    else:
-                        stop_target = (sd - 12.0) if i == 0 else (arm_vehs[i - 1].dist - 34.0)
-                        gap = stop_target - v.dist
-                        if gap > 40.0:
-                            v.speed = min(26.0, v.speed + 8.0 * dt)
-                            v.dist += v.speed * dt * 7.5
-                        elif gap > 4.0:
-                            v.speed = max(1.5, gap * 0.45)
-                            v.dist += v.speed * dt * 7.5
-                        else:
-                            v.speed = 0.0
-                            v.wait += dt
-
-        self.vehicles = [v for v in self.vehicles if v not in to_remove]
-
-    def get_snapshot_vehicles(self) -> List[Dict[str, Any]]:
-        react_vehicles = []
-        for v in self.vehicles:
-            straight_arm = {"N": "S", "S": "N", "E": "W", "W": "E"}[v.dir]
-            left_arm = {"N": "E", "S": "W", "E": "S", "W": "N"}[v.dir]
-            turn = "straight" if v.to == straight_arm else ("left" if v.to == left_arm else "right")
-            react_vehicles.append({
-                "id": v.id,
-                "dir": v.dir,
-                "to": v.to,
-                "turn": turn,
-                "dist": round(v.dist, 1),
-                "speed": round(v.speed, 1),
-                "v": round(v.speed, 1),
-                "type": v.type,
-                "col": v.col,
-                "waiting": v.wait > 0,
-                "wait": round(v.wait, 1),
-                "stopped": v.speed < 0.5,
-                "heavy": v.type == "bus",
-                "isAmbulance": False,
-            })
-        return react_vehicles
-
-veh_engine = YOLO4WayVehicleEngine()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -738,7 +627,7 @@ def format_snapshot() -> Dict[str, Any]:
             },
         },
         "approaches": snap_approaches,
-        "vehicles": veh_engine.get_snapshot_vehicles(),
+        "vehicles": [],
         "pedestrians": [],
         "totals": {
             "inJunction": total_in_junction,
@@ -749,19 +638,12 @@ def format_snapshot() -> Dict[str, Any]:
             "savings": savings,
             "cycles": signal_ctrl.completed_cycles,
         },
-        "network": [
-            {"id": "J1", "name": "Gandhipuram Central (Active)", "x": 120, "y": 140, "load": j1_load, "offset": 0},
-            {"id": "J2", "name": "Lakeview Cross", "x": 340, "y": 140, "load": round(max(0.15, min(0.85, j1_load * 0.85)), 2), "offset": 12},
-            {"id": "J3", "name": "Avinashi Junction", "x": 560, "y": 140, "load": round(max(0.18, min(0.90, j1_load * 0.95)), 2), "offset": 24},
-            {"id": "J4", "name": "Mill Road Gate", "x": 780, "y": 140, "load": round(max(0.10, min(0.70, j1_load * 0.70)), 2), "offset": 36},
-        ],
         "events": list(events)[-10:],
         "emergency": {
             "active": signal_ctrl.emergency_override,
             "dir": signal_ctrl.emergency_target_arm,
             "remaining": round(signal_ctrl.emergency_remaining, 1),
         },
-        "incident": signal_ctrl.incident if signal_ctrl.incident.get("active") else None,
         "crosswalks": {"N": "DONT_WALK", "S": "DONT_WALK", "E": "DONT_WALK", "W": "DONT_WALK"},
         "ai": {
             "model": "XGBoost Regressor (traffic_signal_xgboost.json)",
@@ -798,7 +680,6 @@ async def signal_update_loop():
     while True:
         await asyncio.sleep(dt)
         signal_ctrl.update(dt, approaches)
-        veh_engine.update(dt, approaches, signal_ctrl.active_arm, signal_ctrl.phase_state)
 
 
 async def broadcast_loop():
@@ -877,18 +758,6 @@ def _handle_command(cmd: str, payload: dict):
             signal_ctrl.phase_elapsed = 0.0
         _push_event("EMERGENCY", f"Emergency preemption triggered on ARM {arm}")
 
-    elif cmd == "toggle_incident":
-        active = not signal_ctrl.incident.get("active", False)
-        arm = payload.get("dir", "N")
-        signal_ctrl.incident = {
-            "active": active,
-            "type": payload.get("type", "collision"),
-            "dir": arm,
-            "lane": 0,
-            "title": "Lane Incident" if active else "",
-            "description": "Obstruction detected on lane." if active else "",
-        }
-        _push_event("INCIDENT", f"Incident {'reported' if active else 'cleared'} on ARM {arm}")
 
     elif cmd == "adaptive":
         mode = payload.get("mode")
